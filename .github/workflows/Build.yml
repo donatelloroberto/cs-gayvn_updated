@@ -5,6 +5,10 @@ concurrency:
   group: "build"
   cancel-in-progress: true
 
+permissions:
+  contents: write   # allow push
+  packages: read
+
 on:
   push:
     branches:
@@ -22,9 +26,13 @@ jobs:
           ref: main
           path: src
           fetch-depth: 0   # fetch all history so amend/force push works
+          persist-credentials: true  # allow git push using GITHUB_TOKEN
 
       - name: Clean old builds
-        run: rm -f $GITHUB_WORKSPACE/src/*.cs3 || true
+        run: |
+          # remove any old .cs3 files in repo root under src (safe-guard)
+          rm -f $GITHUB_WORKSPACE/src/*.cs3 || true
+          rm -rf $GITHUB_WORKSPACE/artifacts || true
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4.6.0
@@ -45,11 +53,26 @@ jobs:
           cp build/plugins.json $GITHUB_WORKSPACE/artifacts || true
 
       - name: Commit & Push builds to main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd $GITHUB_WORKSPACE/src
-          cp $GITHUB_WORKSPACE/artifacts/* .
+          # copy artifacts into repo root (src) for commit
+          cp -v $GITHUB_WORKSPACE/artifacts/* . || true
+
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
+
+          # add generated plugin files (do not fail if nothing to add)
           git add *.cs3 plugins.json || true
-          git commit --amend -m "Build $GITHUB_SHA" || exit 0   # do not error if nothing to commit
-          git push --force origin main
+
+          # if there are staged changes, amend the last commit message so history stays tidy;
+          # if nothing to commit, do nothing and exit successfully
+          if git diff --staged --quiet; then
+            echo "No build artifacts to commit."
+          else
+            # create a commit (amend to avoid extra commits each run)
+            git commit --amend -m "Build $GITHUB_SHA" || git commit -m "Build $GITHUB_SHA"
+            # push back to main; use force only when amend was used
+            git push --force origin main
+          fi
