@@ -1,7 +1,7 @@
 version = 1
 
 cloudstream {
-    authors     = listOf("Gayvn")
+    authors     = listOf("GayXXX")
     language    = "en"
     description = "(VPN) Premium porn with 4K support"
 
