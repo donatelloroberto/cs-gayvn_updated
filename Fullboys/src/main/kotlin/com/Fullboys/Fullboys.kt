@@ -66,12 +66,12 @@ class Fullboys : MainAPI() {
         val iframeSrc = doc.selectFirst("iframe#ifvideo")?.attr("src")
 
         val videoUrl = iframeSrc?.let { frame ->
-            Regex("[?&]video=([^&]+)").find(frame)?.groupValues?.getOrNull(1)
+            Regex("""[?&]video=([^&]+)""" ).find(frame)?.groupValues?.getOrNull(1)
         }?.let { URLDecoder.decode(it, "UTF-8") }
 
         val poster = doc.selectFirst("meta[property=og:image]")?.attr("content")
             ?: iframeSrc?.let { frame ->
-                Regex("[?&]poster=([^&]+)").find(frame)?.groupValues?.getOrNull(1)
+                Regex("""[?&]poster=([^&]+)""" ).find(frame)?.groupValues?.getOrNull(1)
             }?.let { URLDecoder.decode(it, "UTF-8") }
 
         val description = doc.selectFirst("meta[name=description]")?.attr("content").orEmpty()
@@ -85,7 +85,7 @@ class Fullboys : MainAPI() {
             newMovieSearchResponse(recName, type = TvType.NSFW, url = recUrl).apply { this.posterUrl = recPoster }
         }
 
-        return newMovieLoadResponse(name, url, TvType.NSFW, url).apply {
+        return newMovieLoadResponse(name = name, url = url, type = TvType.NSFW, raw = url).apply {
             this.posterUrl = poster
             this.plot = description
             this.tags = tags
@@ -127,7 +127,7 @@ class Fullboys : MainAPI() {
         // Fallback: use iframe video URL if no server buttons are found
         val iframeSrc = doc.selectFirst("iframe#ifvideo")?.attr("src")
         val videoUrl = iframeSrc?.let { frame ->
-            Regex("[?&]video=([^&]+)").find(frame)?.groupValues?.getOrNull(1)
+            Regex("""[?&]video=([^&]+)""" ).find(frame)?.groupValues?.getOrNull(1)
         }?.let { URLDecoder.decode(it, "UTF-8") }
 
         if (!videoUrl.isNullOrBlank()) {
