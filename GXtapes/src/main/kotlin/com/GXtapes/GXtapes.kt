@@ -126,7 +126,7 @@ class GXtapes : MainAPI() {
         val document = app.get(data).document
         document.select("#video-code iframe").forEach { links ->
             val url = links.attr("src")
-            Log.d("Tuangayxx Test", url)
+            Log.d("donatelloroberto Test", url)
             loadExtractor(url, subtitleCallback, callback)
         }
         return true
