@@ -3,6 +3,7 @@ package com.Fullboys
 import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import java.net.URLDecoder
 
 class Fullboys : MainAPI() {
     override var mainUrl = "https://fullboys.com"
@@ -40,20 +41,16 @@ class Fullboys : MainAPI() {
 
     private fun toSearchItem(element: Element): SearchResponse? {
         val aTag = element.selectFirst("a") ?: return null
-        val url = fixUrl(aTag.attr("href"))
-        val name = aTag.selectFirst("h2.title")?.text() ?: return null
+        val href = aTag.attr("href")
+        val url = fixUrl(href)
+        val title = aTag.selectFirst("h2.title")?.text() ?: return null
 
-        val image = aTag.selectFirst("img")?.let { img ->
-            img.attr("data-cfsrc").takeIf { it.isNotBlank() } ?: img.attr("src")
-        } ?: return null
+        val img = aTag.selectFirst("img")
+        val posterUrl = img?.attr("data-cfsrc")?.takeIf { it.isNotBlank() } ?: img?.attr("src")
 
-        return MovieSearchResponse(
-            name = name,
-            url = url,
-            apiName = this@Fullboys.name,
-            type = TvType.NSFW,
-            posterUrl = image
-        )
+        return newMovieSearchResponse(title, type = TvType.NSFW, url = url).apply {
+            this.posterUrl = posterUrl
+        }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -70,12 +67,12 @@ class Fullboys : MainAPI() {
 
         val videoUrl = iframeSrc?.let { frame ->
             Regex("[?&]video=([^&]+)").find(frame)?.groupValues?.getOrNull(1)
-        }?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+        }?.let { URLDecoder.decode(it, "UTF-8") }
 
         val poster = doc.selectFirst("meta[property=og:image]")?.attr("content")
             ?: iframeSrc?.let { frame ->
                 Regex("[?&]poster=([^&]+)").find(frame)?.groupValues?.getOrNull(1)
-            }?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+            }?.let { URLDecoder.decode(it, "UTF-8") }
 
         val description = doc.selectFirst("meta[name=description]")?.attr("content").orEmpty()
         val tags = doc.select("div.video-tags a").map { it.text().trim() }
@@ -85,22 +82,16 @@ class Fullboys : MainAPI() {
             val recUrl = fixUrl(aTag.attr("href"))
             val recName = aTag.attr("title") ?: aTag.selectFirst("h2.title")?.text() ?: return@mapNotNull null
             val recPoster = aTag.selectFirst("img")?.attr("src")
-            MovieSearchResponse(
-                name = recName,
-                url = recUrl,
-                apiName = this@Fullboys.name,
-                type = TvType.NSFW,
-                posterUrl = recPoster
-            )
+            newMovieSearchResponse(recName, type = TvType.NSFW, url = recUrl).apply { this.posterUrl = recPoster }
         }
 
-        return newMovieLoadResponse(name, url, TvType.NSFW, url) {
+        return newMovieLoadResponse(name, url, TvType.NSFW, url).apply {
             this.posterUrl = poster
             this.plot = description
             this.tags = tags
             this.recommendations = recommendations
-            if (!videoUrl.isNullOrEmpty()) {
-                this.trailerUrl = videoUrl
+            if (!videoUrl.isNullOrBlank()) {
+                this.trailers.add(TrailerData("Preview", videoUrl))
             }
         }
     }
@@ -115,25 +106,20 @@ class Fullboys : MainAPI() {
 
         val serverLinks = doc.select(".box-server button[onclick]").mapNotNull { btn ->
             val onclick = btn.attr("onclick")
-            val regex = Regex("['\"](https?://[^'\"]+\\.mp4)['\"]")
+            val regex = Regex("['\"](https?://[^'\"]+\.mp4)['\"]")
             val match = regex.find(onclick)
             val url = match?.groupValues?.getOrNull(1)
-            val label = btn.text().trim()
+            val label = btn.text().trim().ifEmpty { "Server" }
             if (url != null) Pair(url, label) else null
         }
 
         if (serverLinks.isNotEmpty()) {
             serverLinks.forEach { (streamUrl, label) ->
-                callback(
-                    newExtractorLink(
-                        source = name,
-                        name = label,
-                        url = streamUrl,
-                        referer = data,
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = false
-                    )
-                )
+                val link = newExtractorLink(source = name, name = label, url = streamUrl) {
+                    referer = data
+                    quality = Qualities.Unknown.value
+                }
+                callback(link)
             }
             return true
         }
@@ -142,20 +128,17 @@ class Fullboys : MainAPI() {
         val iframeSrc = doc.selectFirst("iframe#ifvideo")?.attr("src")
         val videoUrl = iframeSrc?.let { frame ->
             Regex("[?&]video=([^&]+)").find(frame)?.groupValues?.getOrNull(1)
-        }?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+        }?.let { URLDecoder.decode(it, "UTF-8") }
 
-        if (!videoUrl.isNullOrEmpty()) {
-            callback(
-                newExtractorLink(
-                    source = name,
-                    name = "Default",
-                    url = videoUrl,
-                    referer = data,
-                    quality = Qualities.Unknown.value,
-                    isM3u8 = false
-                )
-            )
+        if (!videoUrl.isNullOrBlank()) {
+            val link = newExtractorLink(source = name, name = "Default", url = videoUrl) {
+                referer = data
+                quality = Qualities.Unknown.value
+            }
+            callback(link)
+            return true
         }
-        return true
+
+        return false
     }
 }
